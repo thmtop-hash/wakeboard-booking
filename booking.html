@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Booking - Wakeboard</title>
+<style>
+  *{box-sizing:border-box}
+  body{font-family:'Sarabun',sans-serif;background:#f0f4f8;margin:0;padding:12px}
+  .container{max-width:640px;margin:auto;background:#fff;padding:18px;border-radius:12px}
+  .topbar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+  h2{margin:4px 0;color:#1a73e8;font-size:20px}
+  input,select{width:100%;padding:12px;margin:8px 0;border:1px solid #ccc;border-radius:8px;font-size:16px;min-height:44px}
+  .slot{border:1px solid #ddd;padding:12px;margin:8px 0;border-radius:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+  button{padding:10px 16px;background:#1a73e8;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:15px;min-height:40px}
+  .logout-btn{background:#5f6368;padding:8px 14px;font-size:13px;min-height:36px}
+  .tab{cursor:pointer;padding:10px 14px;display:inline-block;font-size:15px}
+  .tab.active{border-bottom:3px solid #1a73e8;font-weight:bold}
+  .tabs{display:flex;border-bottom:1px solid #eee;margin-bottom:10px}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="topbar">
+    <h2>🏄 จองเวลาเรียน</h2>
+    <button class="logout-btn" onclick="logout()">ออกจากระบบ</button>
+  </div>
+  <div class="tabs">
+    <div class="tab active" onclick="showTab('book',this)">จองคิวใหม่</div>
+    <div class="tab" onclick="showTab('history',this)">ประวัติการจอง</div>
+  </div>
+  <div id="bookTab">
+    <input type="date" id="dateInput" onchange="loadSlots()">
+    <div id="slotsList"></div>
+  </div>
+  <div id="historyTab" style="display:none"><div id="historyList"></div></div>
+</div>
+<script>
+const API_URL = "https://script.google.com/macros/s/AKfycbwZCGZsNFXe02Cjf0c-gMSrQ2yg9s-L-12EosX325t6sb_hPebGlqXF5QM7sB_6uVHA/exec";
+let currentUser = JSON.parse(localStorage.getItem('user')||'null');
+if(!currentUser || currentUser.role!=='student') window.location.href='index.html';
+
+function logout(){ localStorage.removeItem('user'); window.location.href='index.html'; }
+function showTab(tab,el){
+  document.getElementById('bookTab').style.display = tab==='book'?'block':'none';
+  document.getElementById('historyTab').style.display = tab==='history'?'block':'none';
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  if(tab==='history') loadHistory();
+}
+
+async function loadSlots(){
+  const date = document.getElementById('dateInput').value;
+  if(!date) return;
+  document.getElementById('slotsList').innerHTML='กำลังโหลด...';
+  const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'getAvailableSlots', date }) });
+  const data = await res.json();
+  renderSlots(data.slots);
+}
+
+function renderSlots(slots){
+  const list = document.getElementById('slotsList');
+  if(!slots || slots.length===0){ list.innerHTML='<p>ไม่มีคิวว่างในวันนี้</p>'; return; }
+  list.innerHTML = slots.map(s=>`
+    <div class="slot"><div><b>${s.timeSlot}</b> น. — ครู ${s.teacherName}<br><small>ว่าง ${s.capacity-s.bookedCount} / ${s.capacity}</small></div>
+    <button onclick="book('${s.scheduleId}')">จอง</button></div>`).join('');
+}
+
+async function book(scheduleId){
+  const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'createBooking', scheduleId, studentId: currentUser.id }) });
+  const result = await res.json();
+  alert(result.message);
+  if(result.success) loadSlots();
+}
+
+async function loadHistory(){
+  document.getElementById('historyList').innerHTML='กำลังโหลด...';
+  const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'getMyBookings', studentId: currentUser.id }) });
+  const data = await res.json();
+  renderHistory(data.bookings);
+}
+
+function renderHistory(bookings){
+  const list = document.getElementById('historyList');
+  if(!bookings || bookings.length===0){ list.innerHTML='<p>ยังไม่มีประวัติการจอง</p>'; return; }
+  list.innerHTML = bookings.map(b=>`
+    <div class="slot"><div>วันที่ ${b.date} เวลา ${b.timeSlot} น. — ครู ${b.teacherName}<br><small>สถานะ: ${b.status}</small></div>
+    ${b.status!=='Cancelled'?`<button onclick="cancel('${b.bookingId}')">ยกเลิก</button>`:''}</div>`).join('');
+}
+
+async function cancel(bookingId){
+  if(!confirm('ยืนยันยกเลิก?')) return;
+  const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'cancelBooking', bookingId }) });
+  const result = await res.json();
+  if(result.success) loadHistory();
+}
+</script>
+</body>
+</html>

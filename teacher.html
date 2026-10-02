@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Teacher Panel - Wakeboard</title>
+<style>
+  *{box-sizing:border-box}
+  body{font-family:'Sarabun',sans-serif;background:#f0f4f8;margin:0;padding:12px}
+  .container{max-width:700px;margin:auto;background:#fff;padding:18px;border-radius:12px}
+  .topbar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+  h2{margin:4px 0;color:#1a73e8;font-size:20px}
+  input{width:100%;padding:12px;margin:6px 0;border:1px solid #ccc;border-radius:8px;font-size:16px;min-height:44px}
+  .row2{display:flex;gap:8px;flex-wrap:wrap}
+  .row2 > input{flex:1;min-width:120px}
+  .card{border:1px solid #ddd;padding:12px;margin:8px 0;border-radius:8px}
+  button{padding:10px 16px;background:#1a73e8;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:15px;min-height:40px}
+  .logout-btn{background:#5f6368;padding:8px 14px;font-size:13px;min-height:36px}
+  .tab{cursor:pointer;padding:10px 14px;display:inline-block;font-size:15px}
+  .tab.active{border-bottom:3px solid #1a73e8;font-weight:bold}
+  .tabs{display:flex;border-bottom:1px solid #eee;margin-bottom:10px;flex-wrap:wrap}
+  .status{display:inline-block;padding:2px 8px;border-radius:12px;font-size:12px}
+  .status.Confirmed{background:#e6f4ea;color:#188038}
+  .status.Cancelled{background:#fce8e6;color:#d93025}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="topbar">
+    <h2>🎓 แผงครูสอน</h2>
+    <button class="logout-btn" onclick="logout()">ออกจากระบบ</button>
+  </div>
+  <div class="tabs">
+    <div class="tab active" onclick="showTab('schedule',this)">ตารางสอนของฉัน</div>
+    <div class="tab" onclick="showTab('addslot',this)">เพิ่มเวลาว่าง</div>
+  </div>
+  <div id="scheduleTab"><div id="scheduleList">กำลังโหลด...</div></div>
+  <div id="addslotTab" style="display:none">
+    <div class="card">
+      <input type="date" id="slotDate">
+      <div class="row2">
+        <input type="time" id="slotTime">
+        <input type="number" id="slotCapacity" min="1" value="1" placeholder="จำนวนรับ">
+      </div>
+      <button onclick="addSlot()" style="width:100%;margin-top:8px">เพิ่มเวลาสอน</button>
+      <p id="addMsg" style="color:#188038;text-align:center"></p>
+    </div>
+  </div>
+</div>
+<script>
+const API_URL = "https://script.google.com/macros/s/AKfycbwZCGZsNFXe02Cjf0c-gMSrQ2yg9s-L-12EosX325t6sb_hPebGlqXF5QM7sB_6uVHA/exec";
+let currentUser = JSON.parse(localStorage.getItem('user')||'null');
+if(!currentUser || (currentUser.role!=='teacher' && currentUser.role!=='admin')) window.location.href='index.html';
+
+function logout(){ localStorage.removeItem('user'); window.location.href='index.html'; }
+function showTab(tab,el){
+  document.getElementById('scheduleTab').style.display = tab==='schedule'?'block':'none';
+  document.getElementById('addslotTab').style.display = tab==='addslot'?'block':'none';
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  if(tab==='schedule') loadSchedule();
+}
+
+async function loadSchedule(){
+  document.getElementById('scheduleList').innerHTML='กำลังโหลด...';
+  const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'getTeacherSchedule', teacherId: currentUser.id }) });
+  const data = await res.json();
+  renderSchedule(data.schedule);
+}
+
+function renderSchedule(items){
+  const list = document.getElementById('scheduleList');
+  if(!items || items.length===0){ list.innerHTML='<p>ยังไม่มีคิวสอน</p>'; return; }
+  list.innerHTML = items.map(b=>`
+    <div class="card">
+      <b>${b.date}</b> เวลา ${b.timeSlot} น.<br>
+      นักเรียน: <b>${b.studentName}</b><br>
+      <span class="status ${b.status}">${b.status}</span>
+    </div>`).join('');
+}
+
+async function addSlot(){
+  const date = document.getElementById('slotDate').value;
+  const timeSlot = document.getElementById('slotTime').value;
+  const capacity = Number(document.getElementById('slotCapacity').value);
+  if(!date || !timeSlot || !capacity){ alert('กรุณากรอกข้อมูลให้ครบ'); return; }
+  
+  const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'addTeacherSlot', teacherId: currentUser.id, date, timeSlot, capacity }) });
+  const result = await res.json();
+  document.getElementById('addMsg').innerText = result.message;
+  document.getElementById('slotDate').value = '';
+  document.getElementById('slotTime').value = '';
+  setTimeout(()=> document.getElementById('addMsg').innerText = '', 2000);
+}
+
+loadSchedule();
+</script>
+</body>
+</html>
