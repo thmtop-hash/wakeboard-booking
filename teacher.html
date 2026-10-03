@@ -39,7 +39,7 @@
     <div class="card">
       <input type="date" id="slotDate">
       <div class="row2">
-        <input type="time" id="slotTime">
+        <input type="text" id="slotTime" placeholder="ช่วงเวลา เช่น 08.00-09.00" maxlength="13" autocomplete="off">
         <input type="number" id="slotCapacity" min="1" value="1" placeholder="จำนวนรับ">
       </div>
       <button onclick="addSlot()" style="width:100%;margin-top:8px">เพิ่มเวลาสอน</button>
@@ -50,8 +50,14 @@
 <script>
 const API_URL = "https://script.google.com/macros/s/AKfycbwZCGZsNFXe02Cjf0c-gMSrQ2yg9s-L-12EosX325t6sb_hPebGlqXF5QM7sB_6uVHA/exec";
 let currentUser = JSON.parse(localStorage.getItem('user')||'null');
-if(!currentUser || (currentUser.role!=='teacher' && currentUser.role!=='admin')) window.location.href='index.html';
+if(!currentUser || !currentUser.token || (currentUser.role!=='teacher' && currentUser.role!=='admin')) window.location.href='index.html';
 
+async function apiFetch(url, opts){
+  const body = JSON.parse(opts.body); body.token = currentUser.token;
+  const res = await fetch(url, { ...opts, body: JSON.stringify(body) });
+  res.clone().json().then(d=>{ if(d && d.code==='AUTH'){ localStorage.removeItem('user'); alert(d.message); window.location.href='index.html'; } }).catch(()=>{});
+  return res;
+}
 function logout(){ localStorage.removeItem('user'); window.location.href='index.html'; }
 function showTab(tab,el){
   document.getElementById('scheduleTab').style.display = tab==='schedule'?'block':'none';
@@ -63,7 +69,7 @@ function showTab(tab,el){
 
 async function loadSchedule(){
   document.getElementById('scheduleList').innerHTML='กำลังโหลด...';
-  const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'getTeacherSchedule', teacherId: currentUser.id }) });
+  const res = await apiFetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'getTeacherSchedule', teacherId: currentUser.id }) });
   const data = await res.json();
   renderSchedule(data.schedule);
 }
@@ -81,16 +87,22 @@ function renderSchedule(items){
 
 async function addSlot(){
   const date = document.getElementById('slotDate').value;
-  const timeSlot = document.getElementById('slotTime').value;
+  const timeSlot = document.getElementById('slotTime').value.trim();
   const capacity = Number(document.getElementById('slotCapacity').value);
+  const msg = document.getElementById('addMsg');
   if(!date || !timeSlot || !capacity){ alert('กรุณากรอกข้อมูลให้ครบ'); return; }
-  
-  const res = await fetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'addTeacherSlot', teacherId: currentUser.id, date, timeSlot, capacity }) });
-  const result = await res.json();
-  document.getElementById('addMsg').innerText = result.message;
-  document.getElementById('slotDate').value = '';
-  document.getElementById('slotTime').value = '';
-  setTimeout(()=> document.getElementById('addMsg').innerText = '', 2000);
+  if(!/^\d{1,2}[.:]\d{2}\s*[-–—]\s*\d{1,2}[.:]\d{2}$/.test(timeSlot)){ alert('กรุณากรอกช่วงเวลาให้ถูกต้อง เช่น 08.00-09.00'); return; }
+  msg.style.color = '#5f6368'; msg.innerText = 'กำลังบันทึก...';
+  try {
+    const res = await apiFetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'addTeacherSlot', teacherId: currentUser.id, date, timeSlot, capacity }) });
+    const result = await res.json();
+    msg.style.color = result.success ? '#188038' : '#d93025';
+    msg.innerText = result.message || 'เกิดข้อผิดพลาด';
+    if(result.success){ document.getElementById('slotDate').value = ''; document.getElementById('slotTime').value = ''; }
+  } catch(e) {
+    msg.style.color = '#d93025'; msg.innerText = 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาลองใหม่';
+  }
+  setTimeout(()=> msg.innerText = '', 5000);
 }
 
 loadSchedule();
