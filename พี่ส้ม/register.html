@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Register - Wakeboard</title>
+<style>
+  *{box-sizing:border-box}
+  body{font-family:'Sarabun',sans-serif;background:#f0f4f8;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;padding:16px}
+  .box{background:#fff;padding:24px;border-radius:12px;box-shadow:0 4px 12px rgba(0,0,0,.1);width:100%;max-width:360px}
+  h2{text-align:center;color:#1a73e8;margin-top:0}
+  input{width:100%;padding:12px;margin:8px 0;border:1px solid #ccc;border-radius:8px;font-size:16px;min-height:44px}
+  button{width:100%;padding:12px;background:#1a73e8;color:#fff;border:none;border-radius:8px;cursor:pointer;margin-top:10px;font-size:16px;min-height:44px}
+  #regMsg{color:#d93025;text-align:center;font-size:14px;min-height:18px}
+  .link{text-align:center;margin-top:10px;font-size:14px}
+  .link a{color:#1a73e8;text-decoration:none}
+</style>
+</head>
+<body>
+<div class="box">
+  <h2>🏄 สมัครสมาชิกใหม่</h2>
+  <input type="text" id="regName" placeholder="ชื่อ-นามสกุล">
+  <input type="email" id="regEmail" placeholder="อีเมล">
+  <input type="password" id="regPassword" placeholder="รหัสผ่าน">
+  <input type="text" id="regPhone" placeholder="เบอร์โทร">
+  <button onclick="register()">ยืนยันสมัครสมาชิก</button>
+  <p id="regMsg"></p>
+  <div class="link"><a href="index.html">กลับไปเข้าสู่ระบบ</a></div>
+</div>
+<script>
+const API_URL = "https://script.google.com/macros/s/AKfycbwZCGZsNFXe02Cjf0c-gMSrQ2yg9s-L-12EosX325t6sb_hPebGlqXF5QM7sB_6uVHA/exec";
+
+async function register(){
+  const name = document.getElementById('regName').value;
+  const email = document.getElementById('regEmail').value;
+  const password = document.getElementById('regPassword').value;
+  const phone = document.getElementById('regPhone').value;
+  
+  if(!name || !email || !password || !phone){
+    document.getElementById('regMsg').innerText='กรุณากรอกข้อมูลให้ครบ';
+    return;
+  }
+  document.getElementById('regMsg').style.color='#1a73e8';
+  document.getElementById('regMsg').innerText='กำลังสมัคร...';
+  
+  try {
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'register', name, email, password, phone })
+    });
+    const result = await res.json();
+    document.getElementById('regMsg').style.color = result.success?'#188038':'#d93025';
+    document.getElementById('regMsg').innerText = result.message;
+    if(result.success) setTimeout(()=> window.location.href='index.html', 1500);
+  } catch(e) {
+    document.getElementById('regMsg').innerText = 'เกิดข้อผิดพลาด';
+  }
+}
+</script>
+</body>
+</html>
