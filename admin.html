@@ -1,32 +1,142 @@
-<!-- ในส่วนของการแสดงตาราง Users ใน admin.html -->
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Panel - Wakeboard</title>
+<style>
+  *{box-sizing:border-box}
+  body{font-family:'Sarabun',sans-serif;background:#f0f4f8;margin:0;padding:12px}
+  .container{max-width:900px;margin:auto;background:#fff;padding:18px;border-radius:12px}
+  .topbar{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+  h2{margin:4px 0;color:#1a73e8;font-size:20px}
+  button{padding:8px 14px;background:#1a73e8;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px;min-height:38px}
+  .logout-btn{background:#5f6368;padding:8px 14px;font-size:13px;min-height:36px}
+  .tab{cursor:pointer;padding:10px 14px;display:inline-block;font-size:15px}
+  .tab.active{border-bottom:3px solid #1a73e8;font-weight:bold}
+  .tabs{display:flex;border-bottom:1px solid #eee;margin-bottom:10px;flex-wrap:wrap}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{padding:8px;border-bottom:1px solid #eee;text-align:left}
+  th{background:#f8f9fa}
+  .table-wrap{overflow-x:auto}
+  .status{display:inline-block;padding:2px 8px;border-radius:12px;font-size:12px}
+  .status.Active,.status.Confirmed{background:#e6f4ea;color:#188038}
+  .status.Inactive,.status.Cancelled{background:#fce8e6;color:#d93025}
+  select{padding:6px;border-radius:6px;border:1px solid #ccc;font-size:13px}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="topbar">
+    <h2>🛠 แผงควบคุมแอดมิน</h2>
+    <div>
+      <button class="logout-btn" onclick="logout()">ออกจากระบบ</button>
+    </div>
+  </div>
+  <div class="tabs">
+    <div class="tab active" onclick="showTab('users',this)">จัดการสมาชิก</div>
+    <div class="tab" onclick="showTab('bookings',this)">การจองทั้งหมด</div>
+  </div>
+  <div id="usersTab">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>ชื่อ</th><th>อีเมล</th><th>เบอร์โทร</th><th>บทบาท</th><th>สถานะ</th><th>จัดการ</th></tr></thead>
+        <tbody id="usersBody"><tr><td colspan="6">กำลังโหลด...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+  <div id="bookingsTab" style="display:none">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>นักเรียน</th><th>ครู</th><th>วันที่</th><th>เวลา</th><th>สถานะ</th></tr></thead>
+        <tbody id="bookingsBody"><tr><td colspan="5">กำลังโหลด...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<script>
+const API_URL = "https://script.google.com/macros/s/AKfycbwZCGZsNFXe02Cjf0c-gMSrQ2yg9s-L-12EosX325t6sb_hPebGlqXF5QM7sB_6uVHA/exec";
+let currentUser = JSON.parse(localStorage.getItem('user')||'null');
+if(!currentUser || !currentUser.token || currentUser.role!=='admin'){
+  localStorage.removeItem('user'); window.location.href='index.html'; throw new Error('not authorized');
+}
+
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+async function api(payload){
+  const res = await fetch(API_URL, { method:'POST', body: JSON.stringify({ token: currentUser.token, ...payload }) });
+  const data = await res.json();
+  if(data.code==='AUTH'){ localStorage.removeItem('user'); alert(data.message); window.location.href='index.html'; throw new Error('AUTH'); }
+  return data;
+}
+
+async function logout(){
+  try { await api({ action:'logout' }); } catch(e){}
+  localStorage.removeItem('user'); window.location.href='index.html';
+}
+function showTab(tab,el){
+  document.getElementById('usersTab').style.display = tab==='users'?'block':'none';
+  document.getElementById('bookingsTab').style.display = tab==='bookings'?'block':'none';
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  if(tab==='users') loadUsers(); else loadBookings();
+}
+
+async function loadUsers(){
+  const data = await api({ action: 'getAllUsers' });
+  if(!data.success){ alert(data.message); return; }
+  renderUsers(data.users);
+}
+
 function renderUsers(users){
-  document.getElementById('usersBody').innerHTML = users.map(u=>`
+  document.getElementById('usersBody').innerHTML = users.map(u=>{
+    const dis = u.id === currentUser.id ? 'disabled' : '';
+    const roleOpt = (v,t) => `<option value="${v}" ${u.role===v?'selected':''}>${t}</option>`;
+    return `
     <tr>
-      <td>${u.name}</td>
-      <td>${u.email}</td>
+      <td>${esc(u.name)}</td><td>${esc(u.email)}</td><td>${esc(u.phone)}</td>
       <td>
-        <!-- เพิ่ม Dropdown เลือก Role ตรงนี้ -->
-        <select onchange="updateRole('${u.id}', this.value)">
-          <option value="student" ${u.role==='student'?'selected':''}>นักเรียน (Student)</option>
-          <option value="teacher" ${u.role==='teacher'?'selected':''}>ครู (Teacher)</option>
-          <option value="admin" ${u.role==='admin'?'selected':''}>แอดมิน (Admin)</option>
+        <select ${dis} data-id="${esc(u.id)}" onchange="updateRole(this.dataset.id, this.value)">
+          ${roleOpt('student','นักเรียน')}${roleOpt('teacher','ครู')}${roleOpt('admin','แอดมิน')}
         </select>
       </td>
-      <td><span class="status ${u.status}">${u.status}</span></td>
+      <td><span class="status ${esc(u.status)}">${esc(u.status)}</span></td>
       <td>
-        <select onchange="updateStatus('${u.id}', this.value)">
+        <select ${dis} data-id="${esc(u.id)}" onchange="updateStatus(this.dataset.id, this.value)">
           <option value="Active" ${u.status==='Active'?'selected':''}>Active</option>
           <option value="Inactive" ${u.status==='Inactive'?'selected':''}>Inactive</option>
         </select>
       </td>
+    </tr>`;
+  }).join('');
+}
+
+async function updateStatus(userId, status){
+  const r = await api({ action: 'updateUserStatus', userId, status });
+  alert(r.message); loadUsers();
+}
+async function updateRole(userId, newRole){
+  const r = await api({ action: 'updateUserRole', userId, newRole });
+  alert(r.message); loadUsers();
+}
+
+async function loadBookings(){
+  document.getElementById('bookingsBody').innerHTML='<tr><td colspan="5">กำลังโหลด...</td></tr>';
+  const data = await api({ action: 'getAllBookings' });
+  if(!data.success){ alert(data.message); return; }
+  renderBookings(data.bookings);
+}
+
+function renderBookings(bookings){
+  if(!bookings || bookings.length===0){ document.getElementById('bookingsBody').innerHTML='<tr><td colspan="5">ยังไม่มีข้อมูล</td></tr>'; return; }
+  document.getElementById('bookingsBody').innerHTML = bookings.map(b=>`
+    <tr>
+      <td>${esc(b.studentName)}</td><td>${esc(b.teacherName)}</td><td>${esc(b.date)}</td><td>${esc(b.timeSlot)}</td>
+      <td><span class="status ${esc(b.status)}">${esc(b.status)}</span></td>
     </tr>`).join('');
 }
 
-async function updateRole(userId, newRole){
-  const res = await fetch(API_URL, { 
-    method: 'POST', 
-    body: JSON.stringify({ action: 'updateUserRole', userId, newRole }) 
-  });
-  const result = await res.json();
-  alert(result.message);
-}
+loadUsers();
+</script>
+</body>
+</html>
