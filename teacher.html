@@ -41,6 +41,7 @@
       <div class="row2">
         <input type="text" id="slotTime" placeholder="ช่วงเวลา เช่น 08.00-09.00" maxlength="13" autocomplete="off">
         <input type="number" id="slotCapacity" min="1" value="1" placeholder="จำนวนรับ">
+        <input type="number" id="slotPrice" min="0" value="0" placeholder="ราคา (บาท)">
       </div>
       <button onclick="addSlot()" style="width:100%;margin-top:8px">เพิ่มเวลาสอน</button>
       <p id="addMsg" style="color:#188038;text-align:center"></p>
@@ -89,12 +90,13 @@ async function addSlot(){
   const date = document.getElementById('slotDate').value;
   const timeSlot = document.getElementById('slotTime').value.trim();
   const capacity = Number(document.getElementById('slotCapacity').value);
+  const price = Number(document.getElementById('slotPrice').value) || 0;
   const msg = document.getElementById('addMsg');
   if(!date || !timeSlot || !capacity){ alert('กรุณากรอกข้อมูลให้ครบ'); return; }
   if(!/^\d{1,2}[.:]\d{2}\s*[-–—]\s*\d{1,2}[.:]\d{2}$/.test(timeSlot)){ alert('กรุณากรอกช่วงเวลาให้ถูกต้อง เช่น 08.00-09.00'); return; }
   msg.style.color = '#5f6368'; msg.innerText = 'กำลังบันทึก...';
   try {
-    const res = await apiFetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'addTeacherSlot', teacherId: currentUser.id, date, timeSlot, capacity }) });
+    const res = await apiFetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'addTeacherSlot', teacherId: currentUser.id, date, timeSlot, capacity, price }) });
     const result = await res.json();
     msg.style.color = result.success ? '#188038' : '#d93025';
     msg.innerText = result.message || 'เกิดข้อผิดพลาด';
