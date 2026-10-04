@@ -68,16 +68,10 @@ function renderSlots(slots){
   const list = document.getElementById('slotsList');
   if(!slots || slots.length===0){ list.innerHTML='<p>ไม่มีคิวว่างในวันนี้</p>'; return; }
   list.innerHTML = slots.map(s=>`
-    <div class="slot"><div><b>${s.timeSlot}</b> น. — ครู ${s.teacherName}<br><small>ว่าง ${s.capacity-s.bookedCount} / ${s.capacity}</small></div>
-    <button onclick="book('${s.scheduleId}')">จอง</button></div>`).join('');
+    <div class="slot"><div><b>${s.timeSlot}</b> น. — ครู ${s.teacherName}<br><small>ว่าง ${s.capacity-s.bookedCount} / ${s.capacity} · ราคา ${s.price||0} บาท</small></div>
+    <button onclick="openBook('${s.scheduleId}', ${s.price||0})">จอง</button></div>`).join('');
 }
 
-async function book(scheduleId){
-  const res = await apiFetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'createBooking', scheduleId, studentId: currentUser.id }) });
-  const result = await res.json();
-  alert(result.message);
-  if(result.success) loadSlots();
-}
 
 async function loadHistory(){
   document.getElementById('historyList').innerHTML='กำลังโหลด...';
@@ -90,8 +84,8 @@ function renderHistory(bookings){
   const list = document.getElementById('historyList');
   if(!bookings || bookings.length===0){ list.innerHTML='<p>ยังไม่มีประวัติการจอง</p>'; return; }
   list.innerHTML = bookings.map(b=>`
-    <div class="slot"><div>วันที่ ${b.date} เวลา ${b.timeSlot} น. — ครู ${b.teacherName}<br><small>สถานะ: ${b.status}</small></div>
-    ${b.status!=='Cancelled'?`<button onclick="cancel('${b.bookingId}')">ยกเลิก</button>`:''}</div>`).join('');
+    <div class="slot"><div>วันที่ ${b.date} เวลา ${b.timeSlot} น. — ครู ${b.teacherName}<br><small>สถานะ: ${b.status} · ${b.price||0} บาท</small></div>
+    ${b.hasSlip?`<button onclick="viewSlip('${b.bookingId}')" style="background:#188038">ดูสลิป</button>`:''}${b.status!=='Cancelled'?`<button onclick="cancel('${b.bookingId}')">ยกเลิก</button>`:''}</div>`).join('');
 }
 
 async function cancel(bookingId){
@@ -100,6 +94,69 @@ async function cancel(bookingId){
   const result = await res.json();
   alert(result.message); if(result.success) loadHistory();
 }
+
+// ข้อความแนะนำการโอนเงิน — แก้เป็นเลขบัญชี/พร้อมเพย์ของคุณ
+const PAYMENT_NOTE = 'โอนเงินตามยอดด้านบน แล้วแนบรูปสลิปเพื่อยืนยันการจอง (แก้ข้อความนี้เป็นเลขบัญชีหรือพร้อมเพย์ของคุณ)';
+let pendingSchedule = null, slipData = null;
+
+function showModal(title, html){ document.getElementById('mTitle').innerText = title; document.getElementById('mBody').innerHTML = html; document.getElementById('modal').style.display = 'block'; }
+function closeModal(){ document.getElementById('modal').style.display = 'none'; }
+
+function openBook(scheduleId, price){
+  pendingSchedule = scheduleId; slipData = null;
+  showModal('ยืนยันการจอง', `
+    <p>ยอดที่ต้องโอน: <b>${price} บาท</b></p>
+    <p style="font-size:14px;color:#5f6368">${PAYMENT_NOTE}</p>
+    <input type="file" accept="image/*" onchange="pickSlip(this)">
+    <img id="slipPreview" style="display:none;max-width:100%;border-radius:8px;margin:6px 0">
+    <button id="confirmBtn" onclick="confirmBook()" style="width:100%" disabled>ยืนยันการจอง</button>
+    <p id="mMsg" style="color:#d93025;text-align:center;font-size:14px"></p>`);
+}
+
+// ย่อรูปในเบราว์เซอร์ก่อนส่ง (ด้านยาวสุด 1280px, JPEG) ให้ไฟล์เล็กและอัปโหลดเร็ว
+function pickSlip(input){
+  const f = input.files[0]; if(!f) return;
+  const msg = document.getElementById('mMsg'); msg.innerText = '';
+  const img = new Image();
+  img.onload = () => {
+    const k = Math.min(1, 1280 / Math.max(img.width, img.height));
+    const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    slipData = c.toDataURL('image/jpeg', 0.75);
+    const p = document.getElementById('slipPreview'); p.src = slipData; p.style.display = 'block';
+    document.getElementById('confirmBtn').disabled = false;
+    URL.revokeObjectURL(img.src);
+  };
+  img.onerror = () => { msg.innerText = 'เปิดไฟล์รูปนี้ไม่ได้ กรุณาเลือกรูป JPG หรือ PNG'; };
+  img.src = URL.createObjectURL(f);
+}
+
+async function confirmBook(){
+  const btn = document.getElementById('confirmBtn'), msg = document.getElementById('mMsg');
+  btn.disabled = true; msg.innerText = 'กำลังอัปโหลดสลิป...';
+  try {
+    const res = await apiFetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'createBooking', scheduleId: pendingSchedule, slip: slipData }) });
+    const result = await res.json();
+    if(result.success){ closeModal(); alert(result.message); loadSlots(); }
+    else { msg.innerText = result.message; btn.disabled = false; }
+  } catch(e){ msg.innerText = 'เชื่อมต่อไม่ได้ กรุณาลองใหม่'; btn.disabled = false; }
+}
+
+async function viewSlip(bookingId){
+  showModal('สลิปการโอนเงิน', '<p>กำลังโหลด...</p>');
+  try {
+    const res = await apiFetch(API_URL, { method: 'POST', body: JSON.stringify({ action: 'getSlip', bookingId }) });
+    const r = await res.json();
+    document.getElementById('mBody').innerHTML = r.success ? `<img src="${r.image}" style="max-width:100%;border-radius:8px">` : `<p>${r.message}</p>`;
+  } catch(e){ document.getElementById('mBody').innerHTML = '<p>โหลดสลิปไม่สำเร็จ</p>'; }
+}
 </script>
+<div id="modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:10;padding:16px;overflow:auto">
+  <div style="background:#fff;max-width:420px;margin:auto;padding:18px;border-radius:12px">
+    <h3 id="mTitle" style="margin:0 0 8px;color:#1a73e8"></h3>
+    <div id="mBody"></div>
+    <button onclick="closeModal()" style="background:#5f6368;width:100%;margin-top:8px">ปิด</button>
+  </div>
+</div>
 </body>
 </html>

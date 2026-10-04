@@ -36,6 +36,7 @@
   <div class="tabs">
     <div class="tab active" onclick="showTab('users',this)">จัดการสมาชิก</div>
     <div class="tab" onclick="showTab('bookings',this)">การจองทั้งหมด</div>
+    <div class="tab" onclick="showTab('summary',this)">สรุปยอด</div>
   </div>
   <div id="usersTab">
     <div class="table-wrap">
@@ -48,11 +49,23 @@
   <div id="bookingsTab" style="display:none">
     <div class="table-wrap">
       <table>
-        <thead><tr><th>นักเรียน</th><th>ครู</th><th>วันที่</th><th>เวลา</th><th>สถานะ</th></tr></thead>
-        <tbody id="bookingsBody"><tr><td colspan="5">กำลังโหลด...</td></tr></tbody>
+        <thead><tr><th>นักเรียน</th><th>ครู</th><th>วันที่</th><th>เวลา</th><th>สถานะ</th><th>ราคา</th><th>สลิป</th></tr></thead>
+        <tbody id="bookingsBody"><tr><td colspan="7">กำลังโหลด...</td></tr></tbody>
       </table>
     </div>
   </div>
+  <div id="summaryTab" style="display:none">
+    <select id="period" onchange="loadSummary()" style="margin-bottom:8px"><option value="week">รายสัปดาห์</option><option value="month">รายเดือน</option></select>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>ช่วงเวลา</th><th>จองสำเร็จ</th><th>ยกเลิก</th><th>ยอดรวม (บาท)</th></tr></thead>
+        <tbody id="summaryBody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<div id="modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:10;padding:16px;overflow:auto" onclick="this.style.display='none'">
+  <div style="background:#fff;max-width:420px;margin:auto;padding:18px;border-radius:12px"><div id="mBody"></div></div>
 </div>
 <script>
 const API_URL = "https://script.google.com/macros/s/AKfycbwZCGZsNFXe02Cjf0c-gMSrQ2yg9s-L-12EosX325t6sb_hPebGlqXF5QM7sB_6uVHA/exec";
@@ -75,11 +88,10 @@ async function logout(){
   localStorage.removeItem('user'); window.location.href='index.html';
 }
 function showTab(tab,el){
-  document.getElementById('usersTab').style.display = tab==='users'?'block':'none';
-  document.getElementById('bookingsTab').style.display = tab==='bookings'?'block':'none';
+  ['users','bookings','summary'].forEach(n=>document.getElementById(n+'Tab').style.display = n===tab?'block':'none');
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   el.classList.add('active');
-  if(tab==='users') loadUsers(); else loadBookings();
+  if(tab==='users') loadUsers(); else if(tab==='bookings') loadBookings(); else loadSummary();
 }
 
 async function loadUsers(){
@@ -121,19 +133,44 @@ async function updateRole(userId, newRole){
 }
 
 async function loadBookings(){
-  document.getElementById('bookingsBody').innerHTML='<tr><td colspan="5">กำลังโหลด...</td></tr>';
+  document.getElementById('bookingsBody').innerHTML='<tr><td colspan="7">กำลังโหลด...</td></tr>';
   const data = await api({ action: 'getAllBookings' });
   if(!data.success){ alert(data.message); return; }
   renderBookings(data.bookings);
 }
 
 function renderBookings(bookings){
-  if(!bookings || bookings.length===0){ document.getElementById('bookingsBody').innerHTML='<tr><td colspan="5">ยังไม่มีข้อมูล</td></tr>'; return; }
+  if(!bookings || bookings.length===0){ document.getElementById('bookingsBody').innerHTML='<tr><td colspan="7">ยังไม่มีข้อมูล</td></tr>'; return; }
   document.getElementById('bookingsBody').innerHTML = bookings.map(b=>`
     <tr>
       <td>${esc(b.studentName)}</td><td>${esc(b.teacherName)}</td><td>${esc(b.date)}</td><td>${esc(b.timeSlot)}</td>
-      <td><span class="status ${esc(b.status)}">${esc(b.status)}</span></td>
+      <td><span class="status ${esc(b.status)}">${esc(b.status)}</span></td><td>${Number(b.price)||0}</td><td>${b.hasSlip?`<button data-id="${esc(b.bookingId)}" onclick="viewSlip(this.dataset.id)">ดูสลิป</button>`:'-'}</td>
     </tr>`).join('');
+}
+
+async function viewSlip(bookingId){
+  const m = document.getElementById('modal'), b = document.getElementById('mBody');
+  b.innerHTML = 'กำลังโหลด...'; m.style.display = 'block';
+  const r = await api({ action: 'getSlip', bookingId });
+  b.innerHTML = r.success ? `<img src="${r.image}" style="max-width:100%;border-radius:8px">` : esc(r.message);
+}
+
+const TH_M = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+const fmtDay = s => { const p = s.split('-').map(Number); return p[2] + ' ' + TH_M[p[1]-1] + ' ' + (p[0]+543); };
+function periodLabel(key, period){
+  if(period==='month'){ const p = key.split('-').map(Number); return TH_M[p[1]-1] + ' ' + (p[0]+543); }
+  const d = new Date(key + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + 6);
+  return fmtDay(key) + ' – ' + fmtDay(d.toISOString().slice(0,10));
+}
+async function loadSummary(){
+  const period = document.getElementById('period').value, body = document.getElementById('summaryBody');
+  body.innerHTML = '<tr><td colspan="4">กำลังโหลด...</td></tr>';
+  const data = await api({ action: 'getSummary', period });
+  if(!data.success){ alert(data.message); return; }
+  if(!data.rows.length){ body.innerHTML = '<tr><td colspan="4">ยังไม่มีข้อมูล</td></tr>'; return; }
+  const sum = k => data.rows.reduce((x, r) => x + r[k], 0);
+  body.innerHTML = data.rows.map(r => `<tr><td>${esc(periodLabel(r.key, period))}</td><td>${r.confirmed}</td><td>${r.cancelled}</td><td>${r.total.toLocaleString()}</td></tr>`).join('')
+    + `<tr style="font-weight:bold"><td>รวมทั้งหมด</td><td>${sum('confirmed')}</td><td>${sum('cancelled')}</td><td>${sum('total').toLocaleString()}</td></tr>`;
 }
 
 loadUsers();
